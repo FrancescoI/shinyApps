@@ -1,0 +1,248 @@
+---
+title: "Karl Lagerfeld: Related Products Experiment"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: scroll
+runtime: shiny
+---
+
+```{r global, include=T, echo = FALSE, message = FALSE}
+### Lib.
+library(tidyverse)
+library(bigrquery)
+library(data.table)
+library(flexdashboard)
+library(highcharter)
+library(openxlsx)
+
+c10 <- fread('elencoC10Karl.csv')
+results <- fread('results.csv')
+ourC10 <- read.xlsx('KL_Related.xlsx', startRow = 3)
+theirC10 <- read.xlsx('KL_Export.xlsx', startRow = 3)
+```
+
+Row 
+-----------------------------------------------------------------------
+
+### CTR % Pre-Experiment 
+
+```{r}
+results %>% 
+  mutate(C10Master = str_to_upper(C10Master),
+         Date = as.Date(as.character(Date), format = '%Y%m%d')) %>% 
+  filter(Date < as.Date('2018-05-10'), Date > as.Date('2018-04-10')) %>%
+  summarise(CTR = sum(click, na.rm = TRUE) / sum(impressions)) * 100 -> CTRPre0  
+
+valueBox(paste0(round(CTRPre0$CTR, 2), ' %'), icon = 'fa-pencil') 
+```
+
+### CTR % Post-Experiment 
+
+```{r}
+results %>% 
+  mutate(C10Master = str_to_upper(C10Master),
+         Date = as.Date(as.character(Date), format = '%Y%m%d')) %>% 
+  filter(Date >= as.Date('2018-05-10')) %>%
+  summarise(CTR = sum(click, na.rm = TRUE) / sum(impressions)) * 100 -> CTRPost0  
+
+valueBox(paste0(round(CTRPost0$CTR, 2), ' %'), icon = 'fa-pencil') 
+```
+
+### Changes % in CTR %
+
+```{r}
+DeltaCTR0 <- CTRPost0$CTR / CTRPre0$CTR - 1
+DeltaCTRVerbose0 <- paste0(round(DeltaCTR0*100, 2), ' %')
+
+valueBox(paste0(round(DeltaCTR0*100, 2), ' %'), 
+         icon = 'fa-comments',
+         color = ifelse(DeltaCTR0 < 0, "warning", "success")) 
+```
+
+
+Row
+-----------------------------------------------------------------------
+
+### CTR % of All Related Items
+```{r}
+results %>% 
+  mutate(C10Master = str_to_upper(C10Master),
+         Date = as.Date(as.character(Date), format = '%Y%m%d')) %>%
+  group_by(Date) %>% 
+  summarise(CTR = sum(click, na.rm = TRUE) / sum(impressions)) %>% 
+  mutate(isPre = ifelse(Date <= as.Date('2018-05-09'), 'Pre Experiment', 'Post Experiment')) %>%
+  hchart("line", hcaes(x = Date, y = round(CTR*100, 2), group = isPre)) %>%
+  hc_add_theme(hc_theme_smpl()) %>% 
+  hc_legend(align = "left", verticalAlign = "top",
+            layout = "vertical", x = 0, y = 100) %>%
+  hc_tooltip(crosshairs = TRUE, backgroundColor = "#FCFFC5",
+             shared = TRUE, borderWidth = 5) %>%
+  hc_yAxis(title = list(text = 'CTR %')) %>%
+  hc_exporting(
+    enabled = TRUE
+  )
+```
+
+### Explanation
+
+Time Series of **Click Through Rate** % of **all C10**, segmented for Pre-Post Experiment time dimension.<br><br>
+
+**Blue** line represents overall CTR % **pre-experiment**: it shows a **steady trend**, around average **0.2%**.<br><br>
+
+**Red** line represents overall CTR % **post-experiment**, with a **strong uplift** thanks to both improvements in modified C10 and newly added C10.<br><br>
+
+We should expect an average increase of **+`r DeltaCTRVerbose0`** using our method, keeping constant all other external variables.<br><br><br>
+
+Row 
+-----------------------------------------------------------------------
+
+### CTR % Pre-Experiment (Manual vs Data-Driven)
+
+```{r}
+results %>% 
+  mutate(C10Master = str_to_upper(C10Master),
+         Date = as.Date(as.character(Date), format = '%Y%m%d')) %>% 
+  inner_join(c10, by = c('C10Master' = 'Master')) %>% 
+  filter(Date < as.Date('2018-05-10'), Date > as.Date('2018-04-10')) %>%
+  summarise(CTR = sum(click, na.rm = TRUE) / sum(impressions)) * 100 -> CTRPre  
+
+valueBox(paste0(round(CTRPre$CTR, 2), ' %'), icon = 'fa-pencil') 
+```
+
+### CTR % Post-Experiment (Manual vs Data-Driven)
+
+```{r}
+results %>% 
+  mutate(C10Master = str_to_upper(C10Master),
+         Date = as.Date(as.character(Date), format = '%Y%m%d')) %>% 
+  inner_join(c10, by = c('C10Master' = 'Master')) %>% 
+  filter(Date >= as.Date('2018-05-10')) %>%
+  summarise(CTR = sum(click, na.rm = TRUE) / sum(impressions)) * 100 -> CTRPost  
+
+valueBox(paste0(round(CTRPost$CTR, 2), ' %'), icon = 'fa-pencil') 
+```
+
+### Changes % in CTR %
+
+```{r}
+DeltaCTR <- CTRPost$CTR / CTRPre$CTR - 1
+DeltaCTRVerbose <- paste0(round(DeltaCTR*100, 2), ' %')
+
+valueBox(paste0(round(DeltaCTR*100, 2), ' %'), 
+         icon = 'fa-comments',
+         color = ifelse(DeltaCTR < 0, "warning", "success")) 
+```
+
+Row
+-----------------------------------------------------------------------
+
+### CTR % of modified Products by "Data Driven" Rules 
+
+```{r}
+results %>% 
+  mutate(C10Master = str_to_upper(C10Master),
+         Date = as.Date(as.character(Date), format = '%Y%m%d')) %>% 
+  inner_join(c10, by = c('C10Master' = 'Master')) %>% 
+  group_by(Date) %>% 
+  summarise(CTR = sum(click, na.rm = TRUE) / sum(impressions)) %>% 
+  mutate(isPre = ifelse(Date <= as.Date('2018-05-09'), 'Manual', 'Data-Driven')) %>%
+  hchart("line", hcaes(x = Date, y = round(CTR*100, 2), group = isPre)) %>%
+  hc_add_theme(hc_theme_smpl()) %>% 
+  hc_legend(align = "left", verticalAlign = "top",
+            layout = "vertical", x = 0, y = 100) %>%
+  hc_tooltip(crosshairs = TRUE, backgroundColor = "#FCFFC5",
+             shared = TRUE, borderWidth = 5) %>%
+  hc_yAxis(title = list(text = 'CTR %')) %>%
+  hc_exporting(
+    enabled = TRUE
+  )
+```
+
+### Explanation
+
+It takes into account only C10 that have been **modified by Data-Driven rules** and that were previously been enriched in a manually fashion.<br><br>
+
+They're **47 products**, belonging to the short tail of most interacted items.<br><br>
+
+Comparison has been made on a 30days window, pre and post experiment (launch on May 10th). <br><br>
+
+**Data-Driven** rules are currently outperforming manual rules by **+ `r DeltaCTRVerbose`**, suggesting better performance having been carry over by our algorithms.<br><br>
+
+
+Row
+-----------------------------------------------------------------------
+
+### CTR % Pre-Experiment (Platform vs Data-Driven) 
+
+```{r}
+results %>% 
+  mutate(C10Master = str_to_upper(C10Master),
+         Date = as.Date(as.character(Date), format = '%Y%m%d')) %>% 
+  inner_join(ourC10 %>% left_join(theirC10, by = c('Master' = 'Master')) %>% filter(is.na(Related.1.y)) %>% distinct(Master), by = c('C10Master' = 'Master')) %>%
+  filter(Date < as.Date('2018-05-10'), Date > as.Date('2018-04-10')) %>%
+  summarise(CTR = sum(click, na.rm = TRUE) / sum(impressions)) * 100 -> CTRPre2  
+
+valueBox(paste0(round(CTRPre2$CTR, 2), ' %'), icon = 'fa-pencil') 
+```
+
+### CTR % Post-Experiment (Platform vs Data-Driven)
+
+```{r}
+results %>% 
+  mutate(C10Master = str_to_upper(C10Master),
+         Date = as.Date(as.character(Date), format = '%Y%m%d')) %>% 
+  inner_join(ourC10 %>% left_join(theirC10, by = c('Master' = 'Master')) %>% filter(is.na(Related.1.y)) %>% distinct(Master), by = c('C10Master' = 'Master')) %>%
+  filter(Date >= as.Date('2018-05-10')) %>%
+  summarise(CTR = sum(click, na.rm = TRUE) / sum(impressions)) * 100 -> CTRPost2  
+
+valueBox(paste0(round(CTRPost2$CTR, 2), ' %'), icon = 'fa-pencil') 
+```
+
+### Changes % in CTR %
+
+```{r}
+DeltaCTR2 <- CTRPost2$CTR / CTRPre2$CTR - 1
+DeltaCTRVerbose2 <- paste0(round(DeltaCTR2*100, 2), ' %')
+
+valueBox(paste0(round(DeltaCTR2*100, 2), ' %'), 
+         icon = 'fa-comments',
+         color = ifelse(DeltaCTR2 < 0, "warning", "success")) 
+```
+
+Row 
+-----------------------------------------------------------------------
+
+### CTR % of Newly Added Products by "Data Driven" Rules
+
+```{r}
+results %>% 
+  mutate(C10Master = str_to_upper(C10Master),
+         Date = as.Date(as.character(Date), format = '%Y%m%d')) %>% 
+  inner_join(ourC10 %>% left_join(theirC10, by = c('Master' = 'Master')) %>% filter(is.na(Related.1.y)) %>% distinct(Master), by = c('C10Master' = 'Master')) %>% 
+  group_by(Date) %>% 
+  summarise(CTR = sum(click, na.rm = TRUE) / sum(impressions)) %>% 
+  mutate(isPre = ifelse(Date <= as.Date('2018-05-09'), 'Platform', 'Data-Driven')) %>%
+  hchart("line", hcaes(x = Date, y = round(CTR*100, 2), group = isPre)) %>%
+  hc_add_theme(hc_theme_smpl()) %>% 
+  hc_legend(align = "left", verticalAlign = "top",
+            layout = "vertical", x = 0, y = 100) %>%
+  hc_tooltip(crosshairs = TRUE, backgroundColor = "#FCFFC5",
+             shared = TRUE, borderWidth = 5) %>%
+  hc_yAxis(title = list(text = 'CTR %')) %>%
+  hc_exporting(
+    enabled = TRUE
+  )
+```
+
+
+### Explanation
+
+It takes into account only newly enriched C10 **by Data-Driven rules** that were previously been treated with **platform rules** (random rotation of products within the same category). <br><br>
+
+Our algorithm was been able to find out more than **70 items**, from the most interacted items cluster, with at least 2 related items.<br><br>
+
+Comparison has been made on a 30days window, pre and post experiment (launch on May 10th). <br><br>
+
+**Data-Driven** rules are currently outperforming platform rules by a **+ `r DeltaCTRVerbose2`**, suggesting much better performance having been carry over by our algorithms.<br><br>
+
